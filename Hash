@@ -1,0 +1,61 @@
+var Web3 = require('web3');
+var web3 = new Web3();
+
+web3.setProvider(new web3.providers.HttpProvider('http://localhost:8545'));
+
+var accountToSignWith = '0x463FC2101D8a184f2A65889939871620a2B20cA8;
+var message = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Tubulum fuisse, qua illum, cuius is condemnatus est rogatione, P. Eaedem res maneant alio modo.'
+
+var contractSource = `
+contract SignAndVerifyExample {
+    function RecoverAddress(bytes32 msgHash, uint8 v, bytes32 r, bytes32 s) constant returns (address) {
+        return ecrecover(msgHash, v, r, s);
+    }
+}
+`;
+
+var contractABI = [{"constant":true,"inputs":[{"name":"msgHash","type":"bytes32"},{"name":"v","type":"uint8"},{"name":"r","type":"bytes32"},{"name":"s","type":"bytes32"}],"name":"RecoverAddress","outputs":[{"name":"","type":"address"}],"payable":false,"type":"function"}];
+var contractAddress = '0x5481c0fe170641bd2e0ff7f04161871829c1902d'; // on Ropsten and Rinkeby
+
+var signAndVerifyContract = web3.eth.contract(contractABI).at(contractAddress);
+
+// eth_sign calculated the signature over keccak256("\x19Ethereum Signed Message:\n" + len(givenMessage) + givenMessage)))
+// this gives context to a signature and prevents signing of transactions.
+function messageHash(msg) {
+	return web3.sha3('\x19Ethereum Signed Message:\n' + msg.length + msg);
+}
+
+function verifyHandler(err, address) {
+	if (!err) {
+		console.log('Recovered address:', address);
+		console.log('  Address matched:', accountToSignWith === address);
+	} else {
+		console.err('Could not recover address:', err);
+	}
+}
+
+function signHandler(err, signature) {
+	if (!err) {
+		console.log('Signature:', signature);
+		signature = signature.substr(2);
+		r = '0x' + signature.substr(0, 64);
+		s = '0x' + signature.substr(64, 64);
+		v = '0x' + signature.substr(128, 2)
+
+		console.log('        r:', r)
+		console.log('        s:', s)
+		console.log('        v:', v)
+		console.log();
+
+		signAndVerifyContract.RecoverAddress(messageHash(message), v, r, s, verifyHandler);
+	} else {
+		console.error('Coult not sign message:', err);
+	}
+}
+
+console.log('  Message to sign:', message);
+console.log('Sign with account:', accountToSignWith);
+console.log();
+
+var messageHex = '0x' + Buffer.from(message).toString('hex');
+web3.eth.sign(accountToSignWith, messageHex, signHandler);
